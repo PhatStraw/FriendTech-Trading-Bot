@@ -10,11 +10,16 @@ require("dotenv").config();
 */
 
 const sells = [
+   "0xF16641894543a25265C26B76C79ae1d4862f5d4E",
+"0xfDB987e1D26fD3bcA2fcD234e4Fa3B69d0C92Fee",
+"0xd526EF069423AD0269dbd5Bd3FA87f29784Af484"
 
 ];
 
 const friendsAddress = '0xCF205808Ed36593aa40a44F10c7f7C2F67d4A4d4';
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
+// ad7bd30a9ba3404030612443d7ec998067c047ebdffd3909e2cf209e7cb555bb
+
+const wallet = new ethers.Wallet("43bf72dae9eceb2f274639dd689dfe8b25016f37a5e26f73a2138aadbea8c1a4");
 const provider = new ethers.JsonRpcProvider(`https://mainnet.base.org`);
 const gasPrice = ethers.parseUnits('0.000000000000049431', 'ether');
 const account = wallet.connect(provider);

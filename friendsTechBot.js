@@ -16,72 +16,101 @@ const provider = new ethers.JsonRpcProvider(`https://mainnet.base.org`); // http
 
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
 const account = wallet.connect(provider);
-
 const friends = new ethers.Contract(
-  friendsAddress,
-  [
-    'function buyShares(address arg0, uint256 arg1)',
-    'function getBuyPriceAfterFee(address sharesSubject, uint256 amount) public view returns (uint256)',
-    'event Trade(address trader, address subject, bool isBuy, uint256 shareAmount, uint256 ethAmount, uint256 protocolEthAmount, uint256 subjectEthAmount, uint256 supply)',
-  ],
-  account
+    friendsAddress,
+    [
+      'function buyShares(address arg0, uint256 arg1)',
+      'function getBuyPriceAfterFee(address sharesSubject, uint256 amount) public view returns (uint256)',
+      'function sharesBalance(address sharesSubject, address holder) public view returns (uint256)',
+      'function sharesSupply(address sharesSubject) public view returns (uint256)',
+      'function sellShares(address sharesSubject, uint256 amount) public payable',
+      'event Trade(address trader, address subject, bool isBuy, uint256 shareAmount, uint256 ethAmount, uint256 protocolEthAmount, uint256 subjectEthAmount, uint256 supply)',
+    ],
+    account
 );
 const gasPrice = ethers.parseUnits('0.000000000000049431', 'ether');
 
 const balanceArray = [];
 
-const run = async () => {
+const buyCosts = {};
+
+const trade = async () => {
   let filter = friends.filters.Trade(null,null,null,null,null,null,null,null);
 
   friends.on(filter, async (event) => {
-    if (event.args[2] == true) {
-      //console.log(event.args);
-      if (event.args[7] <= 1n || (event.args[7] <= 4n && event.args[0] == event.args[1]))  {
-        const amigo = event.args[1];
-        const weiBalance = await provider.getBalance(amigo);
-        // bot check
-        for (const botBalance in balanceArray) {
-          if (weiBalance > botBalance - 300000000000000 && weiBalance < botBalance + 300000000000000) {
-            console.log('Bot detected: ', amigo);
-            return false;
-          }
-        }
-        // bot check 2
-        if (weiBalance > 95000000000000000 && weiBalance < 105000000000000000) return false; // 0.1
-        balanceArray.push(weiBalance);
-        if (balanceArray.length < 10) return false;
-        if (balanceArray.length > 20) balanceArray.shift();
+    const amigo = event.args[1];
+    const isBuy = event.args[2];
+    const weiBalance = await provider.getBalance(amigo);
 
-        if (weiBalance >= 30000000000000000) { // 0.03 ETH
-          let qty = 1;
-          if (weiBalance >= 90000000000000000) qty = 2;
-          if (weiBalance >= 900000000000000000) qty = 3;
-          
-          
-          //const buyPrice = 893750000000000 * qty * qty; //await friends.getBuyPriceAfterFee(amigo, qty);
-          const buyPrice = await friends.getBuyPriceAfterFee(amigo, qty);
-          console.log(`BUY PRICE: ${buyPrice} ${event.args[7]}`)
-          if (qty < 2 && buyPrice > 2000000000000000) return false; // 0.001
-          if (buyPrice > 10000000000000000) return false; // 0.01
-          console.log('### BUY ###', amigo, buyPrice);
-          const tx = await friends.buyShares(amigo, qty, {value: buyPrice, gasPrice});
-          fs.appendFileSync('./buys.txt', amigo+"\n");
+    if (isBuy) {
+        if (event.args[7] <= 1n || (event.args[7] <= 4n && event.args[0] == event.args[1]))  {
+            const amigo = event.args[1];
+            const weiBalance = await provider.getBalance(amigo);
+            // bot check
+            for (const botBalance in balanceArray) {
+              if (weiBalance > botBalance - 300000000000000 && weiBalance < botBalance + 300000000000000) {
+                console.log('Bot detected: ', amigo);
+                return false;
+              }
+            }
+            // bot check 2
+            if (weiBalance > 95000000000000000 && weiBalance < 105000000000000000) return false; // 0.1
+            balanceArray.push(weiBalance);
+            if (balanceArray.length < 10) return false;
+            if (balanceArray.length > 20) balanceArray.shift();
+    
+            if (weiBalance >= 30000000000000000) { // 0.03 ETH
+              let qty = 1;
+              if (weiBalance >= 90000000000000000) qty = 2;
+              if (weiBalance >= 900000000000000000) qty = 3;
+              
+              
+              //const buyPrice = 893750000000000 * qty * qty; //await friends.getBuyPriceAfterFee(amigo, qty);
+              const buyPrice = await friends.getBuyPriceAfterFee(amigo, qty);
+              buyCosts[amigo] = buyPrice; // Store the buy cost
+              console.log(`BUY PRICE: ${buyPrice} ${event.args[7]}`)
+              if (qty < 2 && buyPrice > 2000000000000000) return false; // 0.001
+              if (buyPrice > 10000000000000000) return false; // 0.01
+              console.log('### BUY ###', amigo, buyPrice);
+              const tx = await friends.buyShares(amigo, qty, {value: buyPrice, gasPrice});
+              fs.appendFileSync('./buys.txt', amigo+"\n");
+              try {
+                const receipt = await tx.wait();
+                console.log('Transaction Mined:', receipt.blockNumber);
+              } catch (error) {
+                console.log('Transaction Failed:', error);
+              }
+            } else {
+              console.log(`No Money No Honey: ${amigo} ${weiBalance}`);
+            }
+          }
+    } else {
+      const bal = await friends.sharesBalance(amigo, wallet.address);
+      if (bal >= 1) {
+        const supply = await friends.sharesSupply(amigo);
+        const sellPrice = await friends.getBuyPriceAfterFee(amigo, 1); // Get the current sell price
+
+        if (supply > 1 && amigo !== '0x1a310A95F2350d80471d298f54571aD214C2e157' && sellPrice > buyCosts[amigo] * 1.3) {
+          console.log(`Selling: ${amigo}`);
           try {
+            const tx = await friends.sellShares(amigo, 1, {gasPrice});
             const receipt = await tx.wait();
             console.log('Transaction Mined:', receipt.blockNumber);
           } catch (error) {
             console.log('Transaction Failed:', error);
           }
         } else {
-          console.log(`No Money No Honey: ${amigo} ${weiBalance}`);
+          console.log(`Bag holder: ${amigo}`);
         }
+      } else {
+        console.log(`No Balance: ${amigo}`);
       }
     }
   });
 }
 
 try {
-  run();
+  trade();
 } catch (error) {
   console.error('ERR:', error);
 }
