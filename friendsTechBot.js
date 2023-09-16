@@ -36,13 +36,14 @@ const buyCosts = {};
 
 const trade = async () => {
   let filter = friends.filters.Trade(null,null,null,null,null,null,null,null);
-
   friends.on(filter, async (event) => {
+    console.log("========HELLO==========")
     const amigo = event.args[1];
     const isBuy = event.args[2];
     const weiBalance = await provider.getBalance(amigo);
 
     if (isBuy) {
+    console.log("========isBUY==========")
         if (event.args[7] <= 1n || (event.args[7] <= 4n && event.args[0] == event.args[1]))  {
             const amigo = event.args[1];
             const weiBalance = await provider.getBalance(amigo);
